@@ -1,130 +1,130 @@
-<?php
 // Created by Adam Khoury @ www.developphp.com
-// Connect to the database first thing
-require_once "connect_to_mysql.php";
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SECTION 1 - Make the initial request to simply populate the chat window
 
-// Section 1 - Corresponds with section 1 in our flash AS3 script - Initial chat body request
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+function requestEntries():void {
+	output_txt.text = "Populating chat window...";
+	var variables_re:URLVariables = new URLVariables();
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-if ($_POST['requester'] == "initial_request") {
-   
-    $status_line = "initial load";
-    $body = "";
-    $sql = mysql_query("SELECT * FROM chats ORDER BY date_time DESC"); 
-    while($row = mysql_fetch_array($sql)) { 
-	    $id = $row["id"];
-	    $user_name = $row["user_name"];
-	    $chat_body = $row["chat_body"];
-	    $date_time = $row["date_time"];
-	    $chat_body = stripslashes($chat_body);
-        $chat_body = eregi_replace("&#39;", "'", $chat_body);
+	var varSend_re:URLRequest = new URLRequest("chat.php");
+	varSend_re.method = URLRequestMethod.POST;
+	varSend_re.data = variables_re;
+
+	var varLoader_re:URLLoader = new URLLoader;
+	varLoader_re.dataFormat = URLLoaderDataFormat.VARIABLES;
+	varLoader_re.addEventListener(Event.COMPLETE, completeHandler_re);
+
+	function completeHandler_re(event:Event):void{
+
+		if (event.target.data.returnBody == "") {
+			output_txt.text = "No data coming through";
+		} else {
+			stored_id_txt.text = "" + event.target.data.stored_id;
+			output_txt.condenseWhite = true;
+			output_txt.htmlText = "" + event.target.data.returnBody;
+		}
 	
-        $body .= '<b><font color="#006699">' . $user_name . ': </font></b> 
-	    <font color="#999999" size="-2">' . $date_time . '</font>  
-	    <font color="#000000"> ' . $chat_body . '</font>
-        <br />';
+	}
+	variables_re.requester = "initial_request";
+	varLoader_re.load(varSend_re);
+}
+requestEntries();
 
-    }
-	$sql = mysql_query("SELECT id FROM chats ORDER BY id DESC LIMIT 1"); 
-    while($row = mysql_fetch_array($sql)) { 
-	    $stored_id = $row["id"];
-    }
-    echo "stored_id=$stored_id&statusline=$status_line&returnBody=$body";
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// SECTION 2 - Set up a timer connected to a server call, checking for new chats
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Timer for auto refreshing every 5 seconds
+// You can change this number to suit your needs
+var fiveSecs:Timer = new Timer(1000, 5); 
+fiveSecs.addEventListener(TimerEvent.TIMER, onTick); 
+fiveSecs.addEventListener(TimerEvent.TIMER_COMPLETE, onTimerComplete); 
+fiveSecs.start();
+
+function onTick(event:TimerEvent):void { 
+    timer_txt.text = "" + event.target.currentCount; 
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// Section 2 - Corresponds with section 2 in our flash AS3 script - check for new chats
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-if ($_POST['requester'] == "chat_check") {
+function onTimerComplete(event:TimerEvent):void{
 	
-	$status_line = "not_new";
-	$stored_id = $_POST['stored_id'];
-    $sql = mysql_query("SELECT id FROM chats ORDER BY id DESC LIMIT 1"); 
-    while($row = mysql_fetch_array($sql)) { 
-	    $latest_id = $row["id"];
+    var variables_cc:URLVariables = new URLVariables();
+    var varSend_cc:URLRequest = new URLRequest("chat.php");
+    varSend_cc.method = URLRequestMethod.POST;
+    varSend_cc.data = variables_cc;
+    var varLoader_cc:URLLoader = new URLLoader;
+    varLoader_cc.dataFormat = URLLoaderDataFormat.VARIABLES;
+    varLoader_cc.addEventListener(Event.COMPLETE, completeHandler_cc);
+
+    function completeHandler_cc(event:Event):void{
+	    if (event.target.data.statusline == "is_new") {
+              output_txt.condenseWhite = true;
+		      output_txt.htmlText = "" + event.target.data.returnBody;
+		      stored_id_txt.text = "" + event.target.data.stored_id;
+			  status_txt.text = "" + event.target.data.statusline;
+	    } 
     }
-	
-    if ($latest_id > $stored_id) {
-         
-		 $status_line = "is_new";
- 	     $body = "";
-         $sql = mysql_query("SELECT * FROM chats ORDER BY date_time DESC"); 
-         while($row = mysql_fetch_array($sql)) { 
-              $id = $row["id"];
-              $user_name = $row["user_name"];
-              $chat_body = $row["chat_body"];
-              $date_time = $row["date_time"];
-              $chat_body = stripslashes($chat_body);
-              $chat_body = eregi_replace("&#39;", "'", $chat_body);
-
-              $body .= '<b><font color="#006699">' . $user_name . ': </font></b> 
-              <font color="#999999" size="-2">' . $date_time . '</font>  
-              <font color="#000000"> '.$chat_body.'</font>
-              <br />';
-
-          }
-		  echo "stored_id=$latest_id&statusline=$status_line&returnBody=$body";
-	} 
+	// ready the last_refresh_time variable for sending to PHP
+	variables_cc.requester = "chat_check";
+	variables_cc.stored_id = stored_id_txt.text;
+    varLoader_cc.load(varSend_cc);
+	fiveSecs.reset();
+	fiveSecs.start();
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Section 3 - Corresponds with section 3 in our flash AS3 script - parsing new chats that are submitted
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-if ($_POST['requester'] == "new_chat") {
+//                    SECTION 3 - Parsing new chats to the PHP file
 
-     $user_ip = $_SERVER['REMOTE_ADDR']; 
-     $user_name = $_POST['user_name'];
-     $chat_body = $_POST['chat_body'];
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// This section handles parsing when the user chats
+//input_txt.restrict = "A-Za-z 0-9";
+input_txt.restrict = "^&<>";
+// hide the little processing movieclip
+processing_mc.visible = false;
+// Assign a variable name for our URLVariables object
+var variables_se:URLVariables = new URLVariables();
+//  Build the varSend variable that is the URLRequest object
+var varSend_se:URLRequest = new URLRequest("chat.php");
+varSend_se.method = URLRequestMethod.POST;
+varSend_se.data = variables_se;
+// Build the varLoader variable
+var varLoader_se:URLLoader = new URLLoader;
+varLoader_se.dataFormat = URLLoaderDataFormat.VARIABLES;
+varLoader_se.addEventListener(Event.COMPLETE, completeHandler_se);
 
-      // Cleanse user input of SQL injection attacks before going to database		
-	 $chat_body = eregi_replace("'", "&#39;", $chat_body);
-	 $chat_body = eregi_replace("`", "&#39;", $chat_body);			
-     $chat_body = mysql_real_escape_string($chat_body);
-	 
-     // delete any chat posts off of the tail end ------------------
-      /*   $sqldeleteComments = mysql_query("SELECT id FROM chats ORDER BY date_time ASC LIMIT 0,1"); 
-        
-        while($row = mysql_fetch_array($sqldeleteComments)){ 
-                	$cb_id = $row["id"];
-					$deleteComments = mysql_query("DELETE FROM chats WHERE id='$cb_id'"); 
-        }   */
-        // End delete any comments off of the tail end -------------	 
-     // Add this chat to the chat table
-     $sql = mysql_query("INSERT INTO chats (user_ip, user_name, chat_body, date_time) 
-        VALUES('$user_ip','$user_name','$chat_body',now())")  
-        or die (mysql_error());
-     
-	 $latest_id = mysql_insert_id();
+// Handler for PHP script completion and return
+function completeHandler_se(event:Event):void{
+    // remove processing movieclip(or make invisible)
+    processing_mc.visible = false;
+	// Load the response from the PHP file
+	stored_id_txt.text = "" + event.target.data.stored_id;
+	output_txt.condenseWhite = true;
+	output_txt.htmlText = "" + event.target.data.returnBody;
+}
 
-     $body = "";
-     $sql = mysql_query("SELECT * FROM chats ORDER BY date_time DESC"); 
-     while($row = mysql_fetch_array($sql)) {
-	     $id = $row["id"];
-	     $user_name = $row["user_name"];
-	     $chat_body = $row["chat_body"];
-	     $date_time = $row["date_time"];
-	     $chat_body = stripslashes($chat_body);
-         $chat_body = eregi_replace("&#39;", "'", $chat_body);
+// Add an event listener for the submit button and what function to run
+submit_btn.addEventListener(MouseEvent.CLICK, ValidateAndSend);
+// Validate form fields and send the variables when submit button is clicked
+function ValidateAndSend(event:MouseEvent):void{
 	
-	     $body .= '<b><font color="#006699">' . $user_name . ': </font></b>
-	     <font color="#999999" size="-2">' . $date_time . '</font>  
-	     <font color="#000000"> '.$chat_body.'</font>
-	     <br />';
+    // validate form fields
+    if(!input_txt.length || !uname_txt.length) {
+         // Please type your name and chat content error display goes here
+	} else {
+		
+        processing_mc.visible = true;
+		
+		variables_se.requester = "new_chat";
+   		variables_se.user_name = uname_txt.text;
+   		variables_se.chat_body = input_txt.text;	
 
-     }
-     
-     echo "stored_id=$latest_id&statusline=poopoo&returnBody=$body";
+   		varLoader_se.load(varSend_se);
+		input_txt.text = ""; // Empty the input field
+		output_txt.text = "Waiting for server connection...";
 
-} // close first if for post
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// close the mysql connection we made at the top of our script
-mysql_close();
-?>
+	} // close else after form validation
+} // Close ValidateAndSend function //////////////////////////////////////////////////////////////
